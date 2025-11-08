@@ -100,3 +100,13 @@ update_model_cost_map.py
 tests/test_litellm/proxy/_experimental/mcp_server/test_mcp_server_manager.py
 litellm/proxy/_experimental/out/guardrails/index.html
 scripts/test_vertex_ai_search.py
+
+# Build artifacts and release packages (added for /v1/tokenize development)
+/dist/litellm-1.79.2*
+/litellm-release-1.79.2/
+/litellm-release-1.79.2.tar.gz*
+/BUILD_SUMMARY.md
+/INSTALL_GUIDE.md
+/MANIFEST.txt
+/QUICKSTART.md
+/README-RELEASE.md
