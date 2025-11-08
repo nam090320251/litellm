@@ -2370,6 +2370,12 @@ class TokenCountRequest(LiteLLMPydanticObjectBase):
     """
 
 
+class TokenizeRequest(LiteLLMPydanticObjectBase):
+    model: str
+    text: Optional[str] = None
+    messages: Optional[List[dict]] = None
+
+
 class CallInfo(LiteLLMPydanticObjectBase):
     """Used for slack budget alerting"""
 

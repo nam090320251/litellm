@@ -2633,6 +2633,13 @@ class TokenCountResponse(LiteLLMPydanticObjectBase):
     """
 
 
+class TokenizeResponse(LiteLLMPydanticObjectBase):
+    tokens: List[int]
+    token_strings: List[str]
+    total_tokens: int
+    model: str
+
+
 class CustomHuggingfaceTokenizer(TypedDict):
     identifier: str
     revision: str  # usually 'main'

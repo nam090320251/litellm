@@ -45,6 +45,7 @@ from litellm.types.utils import (
     ModelResponseStream,
     TextCompletionResponse,
     TokenCountResponse,
+    TokenizeResponse,
 )
 from litellm.utils import load_credentials_from_list
 
@@ -6675,6 +6676,122 @@ async def token_counter(request: TokenCountRequest, call_endpoint: bool = False)
         request_model=request.model,
         model_used=model_to_use,
         tokenizer_type=tokenizer_used,
+    )
+
+
+@router.post(
+    "/v1/tokenize",
+    tags=["llm utils"],
+    dependencies=[Depends(user_api_key_auth)],
+    response_model=TokenizeResponse,
+)
+async def tokenize(request: TokenizeRequest):
+    """
+    Tokenize text and return token IDs and token strings.
+
+    Args:
+        request: TokenizeRequest with model and text or messages
+
+    Returns:
+        TokenizeResponse with tokens (IDs), token_strings, total_tokens, and model
+    """
+    import tiktoken
+    from litellm.litellm_core_utils.default_encoding import encoding as default_encoding
+
+    global llm_router
+
+    text = request.text
+    messages = request.messages
+
+    # Validate request
+    if text is None and messages is None:
+        raise HTTPException(
+            status_code=400, detail="Either 'text' or 'messages' must be provided"
+        )
+
+    # Convert messages to text if provided
+    if messages is not None and text is None:
+        # Format messages as text
+        text_parts = []
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            text_parts.append(f"{role}: {content}")
+        text = "\n".join(text_parts)
+
+    # Get deployment info to determine the right tokenizer
+    deployment: Optional[Dict[str, Any]] = None
+    litellm_model_name = None
+    model_info: Optional[ModelMapInfo] = None
+
+    if llm_router is not None:
+        try:
+            deployment = await llm_router.async_get_available_deployment(
+                model=request.model,
+                request_kwargs={},
+            )
+        except Exception:
+            verbose_proxy_logger.exception(
+                "litellm.proxy.proxy_server.tokenize(): Exception occurred while getting deployment"
+            )
+            pass
+
+    if deployment is not None:
+        litellm_model_name = deployment.get("litellm_params", {}).get("model")
+        model_info = deployment.get("model_info", {})
+        # Remove custom_llm_provider prefix
+        if litellm_model_name and "/" in litellm_model_name:
+            litellm_model_name = litellm_model_name.split("/", 1)[1]
+
+    model_to_use: str = litellm_model_name or request.model
+
+    # Get the appropriate tokenizer
+    custom_tokenizer: Optional[CustomHuggingfaceTokenizer] = None
+    if model_info is not None:
+        custom_tokenizer = cast(
+            Optional[CustomHuggingfaceTokenizer],
+            model_info.get("custom_tokenizer", None),
+        )
+
+    _tokenizer_used = litellm.utils._select_tokenizer(
+        model=model_to_use, custom_tokenizer=custom_tokenizer
+    )
+
+    # Tokenize using the selected tokenizer
+    tokenizer_type = _tokenizer_used["type"]
+
+    if tokenizer_type == "openai_tokenizer":
+        # Use tiktoken
+        tokenizer = _tokenizer_used.get("tokenizer") or default_encoding
+        token_ids = tokenizer.encode(text, disallowed_special=())
+
+        # Convert token IDs to strings
+        token_strings = []
+        for token_id in token_ids:
+            try:
+                # Decode each token individually to get the string representation
+                token_str = tokenizer.decode([token_id])
+                token_strings.append(token_str)
+            except Exception:
+                # If decoding fails, use a placeholder
+                token_strings.append(f"<token_{token_id}>")
+    else:
+        # For huggingface or other tokenizers
+        # Use a simplified approach - just use default encoding
+        token_ids = default_encoding.encode(text, disallowed_special=())
+        token_strings = []
+        for token_id in token_ids:
+            try:
+                token_str = default_encoding.decode([token_id])
+                token_strings.append(token_str)
+            except Exception:
+                token_strings.append(f"<token_{token_id}>")
+
+    return TokenizeResponse(
+        tokens=token_ids,
+        token_strings=token_strings,
+        total_tokens=len(token_ids),
+        model=model_to_use,
     )
 
 
